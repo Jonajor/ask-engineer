@@ -1,8 +1,13 @@
 import requests
 import streamlit as st
+import os
 
-BACKEND_QUERY_URL = "http://localhost:8000/query"
-BACKEND_UPLOAD_URL = "http://localhost:8000/upload-report"
+BACKEND_BASE_URL = (
+    os.getenv("BACKEND_BASE_URL")
+    or st.secrets.get("BACKEND_BASE_URL", "http://localhost:8000")
+)
+BACKEND_QUERY_URL = f"{BACKEND_BASE_URL}/query"
+BACKEND_UPLOAD_URL = f"{BACKEND_BASE_URL}/upload-report"
 
 st.set_page_config(page_title="Strata Knowledge Agent", page_icon="🏗️")
 

@@ -81,3 +81,7 @@ async def upload_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error ingesting report: {e}")
 
     return UploadResponse(report_id=report_id, filename=file.filename)
+
+@app.get("/health")
+def healthz():
+    return {"status": "ok"}
