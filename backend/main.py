@@ -4,8 +4,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
-from .models import QueryRequest, QueryResponse, UploadResponse
-from .rag import RAGEngine
+from models import QueryRequest, QueryResponse, UploadResponse
+from rag import RAGEngine
 
 # Ensure OPENAI_API_KEY is set
 if not os.getenv("OPENAI_API_KEY"):

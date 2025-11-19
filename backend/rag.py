@@ -4,9 +4,6 @@ from typing import List, Dict, Tuple, Optional
 import numpy as np
 from openai import OpenAI
 
-from models import QueryRequest, QueryResponse, UploadResponse
-from rag import RAGEngine
-
 from knowledge_base import KNOWLEDGE_CHUNKS
 
 EMBEDDING_MODEL = "text-embedding-3-small"
