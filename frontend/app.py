@@ -75,6 +75,19 @@ st.markdown("""
     max-width: 900px;
 }
 
+/* Force dark text in main area to prevent sidebar color bleed */
+.main p, .main span, .main li, .main label,
+[data-testid="stChatMessage"] p,
+[data-testid="stChatMessage"] span,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] li,
+.stTabs [data-baseweb="tab-panel"] p,
+.stTabs [data-baseweb="tab-panel"] span,
+.stTabs [data-baseweb="tab-panel"] li {
+    color: #1a1a1a !important;
+}
+
 /* ── Header ── */
 .se-header {
     background: linear-gradient(135deg, #1a3a5c 0%, #2d6a9f 100%);
