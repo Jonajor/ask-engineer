@@ -5,7 +5,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
-from models import QueryRequest, QueryResponse, UploadResponse, ReportAnalysis
+from models import QueryRequest, QueryResponse, UploadResponse, ReportAnalysis, ReportImprovements
 from rag import RAGEngine
 
 # Ensure GROQ_API_KEY is set
@@ -96,6 +96,17 @@ def analyze_report(report_id: str):
         raise HTTPException(status_code=503, detail="Engine is still initializing, please retry in a moment.")
     result = rag_engine.analyze_report(report_id)
     return ReportAnalysis(**result)
+
+
+@app.post("/improve-report/{report_id}", response_model=ReportImprovements)
+def improve_report(report_id: str):
+    """
+    Peer-review an ingested report and return improvement tips for the author.
+    """
+    if rag_engine is None:
+        raise HTTPException(status_code=503, detail="Engine is still initializing, please retry in a moment.")
+    result = rag_engine.improve_report(report_id)
+    return ReportImprovements(**result)
 
 
 @app.get("/health")

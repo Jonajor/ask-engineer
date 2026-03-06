@@ -12,6 +12,7 @@ BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL") or _secret_url
 BACKEND_QUERY_URL = f"{BACKEND_BASE_URL}/query"
 BACKEND_UPLOAD_URL = f"{BACKEND_BASE_URL}/upload-report"
 BACKEND_ANALYZE_URL = f"{BACKEND_BASE_URL}/analyze-report"
+BACKEND_IMPROVE_URL = f"{BACKEND_BASE_URL}/improve-report"
 
 st.set_page_config(
     page_title="Strata Engineering - Knowledge Assistant",
@@ -24,6 +25,10 @@ st.markdown("""
 /* ── Hide Streamlit chrome ── */
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
+
+/* ── Hide sidebar collapse/expand buttons ── */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="collapsedControl"] { display: none !important; }
 
 /* ── Page: white background, navy text ── */
 .stApp { background-color: #ffffff; }
@@ -112,6 +117,28 @@ st.markdown("""
     border-radius: 6px !important;
     color: #1a3a5c !important;
 }
+
+/* ── File uploader in sidebar: white card, blue text & button ── */
+[data-testid="stSidebar"] [data-testid="stFileUploader"] {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 4px;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] * {
+    color: #2d6a9f !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploaderDropzone"] {
+    border-color: #2d6a9f !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button {
+    background-color: #2d6a9f !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] [data-testid="stFileUploader"] button:hover {
+    background-color: #1a3a5c !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,8 +149,27 @@ if "current_report_id" not in st.session_state:
     st.session_state.current_report_id = None
 if "current_report_name" not in st.session_state:
     st.session_state.current_report_name = None
+if "current_report_bytes" not in st.session_state:
+    st.session_state.current_report_bytes = None
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
+if "improvement_result" not in st.session_state:
+    st.session_state.improvement_result = None
+
+
+def ensure_report_ingested() -> bool:
+    """Re-ingests the stored PDF if the backend lost it (e.g. server restart). Returns True on success."""
+    if not st.session_state.current_report_bytes or not st.session_state.current_report_name:
+        return False
+    try:
+        files = {"file": (st.session_state.current_report_name, st.session_state.current_report_bytes, "application/pdf")}
+        resp = requests.post(BACKEND_UPLOAD_URL, files=files, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        st.session_state.current_report_id = data["report_id"]
+        return True
+    except Exception:
+        return False
 
 # ================================================================
 # SIDEBAR
@@ -140,12 +186,14 @@ with st.sidebar:
     if uploaded is not None and st.button("Ingest Report", type="primary", use_container_width=True):
         with st.spinner("Processing..."):
             try:
-                files = {"file": (uploaded.name, uploaded.getvalue(), "application/pdf")}
+                pdf_bytes = uploaded.getvalue()
+                files = {"file": (uploaded.name, pdf_bytes, "application/pdf")}
                 resp = requests.post(BACKEND_UPLOAD_URL, files=files, timeout=120)
                 resp.raise_for_status()
                 data = resp.json()
                 st.session_state.current_report_id = data["report_id"]
                 st.session_state.current_report_name = data["filename"]
+                st.session_state.current_report_bytes = pdf_bytes
                 st.session_state.analysis_result = None
                 st.success(f"Ingested: {data['filename']}")
             except Exception as e:
@@ -156,7 +204,9 @@ with st.sidebar:
         if st.button("Clear Report", use_container_width=True):
             st.session_state.current_report_id = None
             st.session_state.current_report_name = None
+            st.session_state.current_report_bytes = None
             st.session_state.analysis_result = None
+            st.session_state.improvement_result = None
             st.rerun()
 
     st.markdown("---")
@@ -189,7 +239,7 @@ st.markdown("""
 # ================================================================
 # TABS
 # ================================================================
-tab_chat, tab_analyze = st.tabs(["Ask a Question", "Analyze Report"])
+tab_chat, tab_analyze, tab_improve = st.tabs(["Ask a Question", "Analyze Report", "Improve Report"])
 
 # --- TAB 1: Chat history display only (input is always outside/below) ---
 with tab_chat:
@@ -227,7 +277,21 @@ with tab_analyze:
                         timeout=120,
                     )
                     resp.raise_for_status()
-                    st.session_state.analysis_result = resp.json()
+                    result_data = resp.json()
+                    # If backend lost the report (server restart), re-ingest and retry once
+                    if result_data.get("executive_summary", "").startswith("No report content found"):
+                        if ensure_report_ingested():
+                            resp2 = requests.post(
+                                f"{BACKEND_ANALYZE_URL}/{st.session_state.current_report_id}",
+                                timeout=120,
+                            )
+                            resp2.raise_for_status()
+                            result_data = resp2.json()
+                        else:
+                            st.error("Could not recover report from server. Please re-ingest the PDF.")
+                            result_data = None
+                    if result_data:
+                        st.session_state.analysis_result = result_data
                 except Exception as e:
                     st.error(f"Analysis error: {e}")
 
@@ -279,6 +343,69 @@ with tab_analyze:
                 for item in escalations:
                     st.markdown(f"- {item}")
 
+# --- TAB 3: Improve Report ---
+with tab_improve:
+    if not st.session_state.current_report_id:
+        st.info("Upload and ingest a PDF report in the sidebar to get improvement tips.")
+    else:
+        st.markdown(f"**Report:** {st.session_state.current_report_name}")
+        st.caption("Peer-review style feedback for engineers and technicians before making the report official.")
+
+        if st.button("Get Improvement Tips", type="primary", use_container_width=True):
+            with st.spinner("Reviewing report for improvements..."):
+                try:
+                    resp = requests.post(
+                        f"{BACKEND_IMPROVE_URL}/{st.session_state.current_report_id}",
+                        timeout=120,
+                    )
+                    resp.raise_for_status()
+                    imp_data = resp.json()
+                    if imp_data.get("summary", "").startswith("No report content found"):
+                        if ensure_report_ingested():
+                            resp2 = requests.post(
+                                f"{BACKEND_IMPROVE_URL}/{st.session_state.current_report_id}",
+                                timeout=120,
+                            )
+                            resp2.raise_for_status()
+                            imp_data = resp2.json()
+                        else:
+                            st.error("Could not recover report from server. Please re-ingest the PDF.")
+                            imp_data = None
+                    if imp_data:
+                        st.session_state.improvement_result = imp_data
+                except Exception as e:
+                    st.error(f"Error getting improvement tips: {e}")
+
+        imp = st.session_state.improvement_result
+        if imp:
+            score = imp.get("overall_score", "")
+            st.markdown(f"### Overall Score: **{score}**")
+            st.markdown(imp.get("summary", ""))
+
+            strengths = imp.get("strengths", [])
+            if strengths:
+                with st.expander("✅ Strengths", expanded=False):
+                    for s in strengths:
+                        st.markdown(f"- {s}")
+
+            missing = imp.get("missing_sections", [])
+            if missing:
+                with st.expander("⚠️ Missing Sections", expanded=True):
+                    for m in missing:
+                        st.markdown(f"- {m}")
+
+            tips = imp.get("tips", [])
+            if tips:
+                st.markdown("### Improvement Tips")
+                severity_icon = {"Critical": "🔴", "Recommended": "🟠", "Minor": "🟡"}
+                for tip in tips:
+                    icon = severity_icon.get(tip.get("severity", ""), "⚪")
+                    with st.expander(
+                        f"{icon} [{tip.get('severity')}] {tip.get('category')} — {tip.get('issue', '')[:80]}"
+                    ):
+                        st.markdown(f"**Issue:** {tip.get('issue', '')}")
+                        st.markdown(f"**Suggestion:** {tip.get('suggestion', '')}")
+
 # ================================================================
 # CHAT INPUT — outside tabs, always pinned to bottom
 # ================================================================
@@ -290,7 +417,8 @@ if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     history_for_backend = [
-        m for m in st.session_state.messages[:-1]
+        {"role": m["role"], "content": m["content"]}
+        for m in st.session_state.messages[:-1]
         if m["role"] in ("user", "assistant")
     ]
 
@@ -301,6 +429,11 @@ if user_input:
             "report_id": st.session_state.current_report_id,
         }
         resp = requests.post(BACKEND_QUERY_URL, json=payload, timeout=60)
+        if resp.status_code == 500 and st.session_state.current_report_id and st.session_state.current_report_bytes:
+            # Backend may have restarted and lost report — re-ingest and retry
+            if ensure_report_ingested():
+                payload["report_id"] = st.session_state.current_report_id
+                resp = requests.post(BACKEND_QUERY_URL, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
         answer = data["answer"]

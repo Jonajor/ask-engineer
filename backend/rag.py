@@ -207,7 +207,7 @@ class RAGEngine:
         for c in chunks:
             text_blocks.append(c["text"])
             total += len(c["text"])
-            if total > 12000:
+            if total > 20000:
                 break
         report_text = "\n\n".join(text_blocks)
 
@@ -222,8 +222,10 @@ class RAGEngine:
             "Analyze the following building report excerpt and return a structured JSON object "
             "with exactly these fields:\n\n"
             "{\n"
-            '  "executive_summary": "2-3 sentence plain-language summary of the building condition",\n'
-            '  "building_overview": "key building facts extracted: age, type, location, major systems if mentioned",\n'
+            '  "executive_summary": "3-5 sentence plain-language summary of the overall building condition, '
+            'key risks, and most urgent recommendations",\n'
+            '  "building_overview": "key building facts: age, type, number of units, location, '
+            'major systems (roofing, envelope, mechanical, electrical, parkade, elevators, etc.) and their general condition",\n'
             '  "top_priorities": [\n'
             '    {\n'
             '      "rank": 1,\n'
@@ -231,24 +233,26 @@ class RAGEngine:
             '      "condition": "Good/Fair/Poor/Critical",\n'
             '      "urgency": "Immediate/Short-Term/Medium-Term/Long-Term",\n'
             '      "estimated_cost_range": "$X,XXX - $X,XXX or Not specified",\n'
-            '      "recommended_action": "concise action"\n'
+            '      "recommended_action": "specific, actionable recommendation with rationale"\n'
             '    }\n'
             '  ],\n'
             '  "components_near_eol": [\n'
             '    {\n'
             '      "component": "name",\n'
             '      "estimated_remaining_life": "X years or At end of life",\n'
-            '      "notes": "brief note"\n'
+            '      "notes": "replacement cost estimate, urgency, and any interim maintenance needed"\n'
             '    }\n'
             '  ],\n'
-            '  "funding_notes": "observations about reserve fund adequacy or funding concerns",\n'
-            '  "escalation_items": ["item requiring engineer sign-off", ...]\n'
+            '  "funding_notes": "detailed observations about reserve fund balance, adequacy vs projected costs, '
+            'recommended special levies or contribution increases if mentioned",\n'
+            '  "escalation_items": ["specific item requiring engineer sign-off or professional assessment", ...]\n'
             "}\n\n"
             "Rules:\n"
-            "- Include up to 5 top priorities, ranked by urgency and cost impact.\n"
-            "- Include all components with less than 5 years of estimated remaining life.\n"
+            "- Include up to 8 top priorities, ranked by urgency and cost impact.\n"
+            "- Include all components with less than 7 years of estimated remaining life.\n"
+            "- recommended_action must be specific and actionable (e.g. 'Commission a Level 2 inspection by a licensed envelope engineer within 6 months'), not generic.\n"
             "- If information is not in the report, use 'Not specified' rather than guessing.\n"
-            "- Flag any item requiring formal structural or legal sign-off as an escalation item.\n"
+            "- Flag any item requiring formal structural, legal, or engineering sign-off as an escalation item.\n"
             "- Return ONLY valid JSON, no extra text.\n\n"
             f"Report content:\n{report_text}"
         )
@@ -273,4 +277,87 @@ class RAGEngine:
                 "components_near_eol": [],
                 "funding_notes": "",
                 "escalation_items": [],
+            }
+
+    # ---------- REPORT IMPROVEMENT TIPS ----------
+
+    def improve_report(self, report_id: str) -> dict:
+        chunks = [d for d in self.report_docs if d.get("report_id") == report_id]
+        if not chunks:
+            return {
+                "overall_score": "N/A",
+                "summary": "No report content found for this report ID.",
+                "tips": [],
+                "missing_sections": [],
+                "strengths": [],
+            }
+
+        text_blocks = []
+        total = 0
+        for c in chunks:
+            text_blocks.append(c["text"])
+            total += len(c["text"])
+            if total > 20000:
+                break
+        report_text = "\n\n".join(text_blocks)
+
+        system_prompt = (
+            "You are a senior peer reviewer and quality assurance expert at Strata Engineering, "
+            "a professional engineering firm in British Columbia. "
+            "Your role is to review draft building condition assessments, depreciation reports, "
+            "and warranty inspection reports before they are issued to clients. "
+            "You provide detailed, constructive feedback to help engineers and technicians "
+            "improve their reports to meet professional standards."
+        )
+
+        user_prompt = (
+            "Review the following building report draft from the perspective of a senior engineer "
+            "doing a quality check before the report is made official. "
+            "Return a JSON object with exactly these fields:\n\n"
+            "{\n"
+            '  "overall_score": "X/10 with a one-line rationale",\n'
+            '  "summary": "2-3 sentence overall assessment of the report quality",\n'
+            '  "tips": [\n'
+            '    {\n'
+            '      "category": "one of: Completeness / Technical Accuracy / Clarity / Methodology / Recommendations / Documentation / Compliance",\n'
+            '      "severity": "Critical / Recommended / Minor",\n'
+            '      "issue": "specific problem found in the report",\n'
+            '      "suggestion": "concrete, actionable improvement the author should make"\n'
+            '    }\n'
+            '  ],\n'
+            '  "missing_sections": ["section or element that is absent but should be present in a professional report of this type"],\n'
+            '  "strengths": ["specific thing the report does well"]\n'
+            "}\n\n"
+            "Review criteria:\n"
+            "- Completeness: Are all building systems covered? Are costs, timelines, and photos referenced?\n"
+            "- Technical Accuracy: Are findings consistent? Are standards (BC Building Code, ASTM, CSA) cited where needed?\n"
+            "- Clarity: Is language precise and unambiguous? Could a non-engineer misinterpret any finding?\n"
+            "- Methodology: Is the inspection scope and limitations clearly stated?\n"
+            "- Recommendations: Are action items specific, prioritized, and tied to findings?\n"
+            "- Documentation: Are assumptions, dates, access limitations, and exclusions noted?\n"
+            "- Compliance: Are strata-specific requirements (SPA, Homeowner Protection Act) addressed if applicable?\n\n"
+            "Include up to 10 tips, prioritized by severity. Be specific — reference actual content from the report.\n"
+            "Return ONLY valid JSON, no extra text.\n\n"
+            f"Report content:\n{report_text}"
+        )
+
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw = response.choices[0].message.content
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {
+                "overall_score": "N/A",
+                "summary": "Could not parse improvement tips. Raw output: " + raw[:500],
+                "tips": [],
+                "missing_sections": [],
+                "strengths": [],
             }

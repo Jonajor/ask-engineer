@@ -35,3 +35,18 @@ class ReportAnalysis(BaseModel):
     components_near_eol: List[ComponentEOL]
     funding_notes: str
     escalation_items: List[str]
+
+
+class ImprovementTip(BaseModel):
+    category: str
+    severity: str   # Critical / Recommended / Minor
+    issue: str
+    suggestion: str
+
+
+class ReportImprovements(BaseModel):
+    overall_score: str        # e.g. "7/10"
+    summary: str
+    tips: List[ImprovementTip]
+    missing_sections: List[str]
+    strengths: List[str]
