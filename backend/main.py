@@ -4,12 +4,12 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pypdf import PdfReader
 
-from models import QueryRequest, QueryResponse, UploadResponse
+from models import QueryRequest, QueryResponse, UploadResponse, ReportAnalysis
 from rag import RAGEngine
 
-# Ensure OPENAI_API_KEY is set
-if not os.getenv("OPENAI_API_KEY"):
-    raise RuntimeError("Please set OPENAI_API_KEY environment variable.")
+# Ensure GROQ_API_KEY is set
+if not os.getenv("GROQ_API_KEY"):
+    raise RuntimeError("Please set GROQ_API_KEY environment variable.")
 
 app = FastAPI(title="Strata Knowledge Agent")
 
@@ -81,6 +81,17 @@ async def upload_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error ingesting report: {e}")
 
     return UploadResponse(report_id=report_id, filename=file.filename)
+
+@app.post("/analyze-report/{report_id}", response_model=ReportAnalysis)
+def analyze_report(report_id: str):
+    """
+    Run structured analysis on an already-ingested report.
+    Returns priorities, EOL components, funding notes, and escalation items.
+    """
+    assert rag_engine is not None, "Engine not initialized"
+    result = rag_engine.analyze_report(report_id)
+    return ReportAnalysis(**result)
+
 
 @app.get("/health")
 def healthz():

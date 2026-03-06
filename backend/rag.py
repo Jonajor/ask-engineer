@@ -1,19 +1,29 @@
+import json
 import uuid
 from typing import List, Dict, Tuple, Optional
 
 import numpy as np
-from openai import OpenAI
+from groq import Groq
+from sentence_transformers import SentenceTransformer
 
 from knowledge_base import KNOWLEDGE_CHUNKS
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4.1-mini"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+CHAT_MODEL = "llama-3.3-70b-versatile"
 
-client = OpenAI()
+_embedder = SentenceTransformer(EMBEDDING_MODEL)
+client = Groq()
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
     return v / (np.linalg.norm(v) + 1e-10)
+
+
+def _embed(texts: List[str]) -> List[np.ndarray]:
+    if not texts:
+        return []
+    vectors = _embedder.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    return [v.astype("float32") for v in vectors]
 
 
 def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str]:
@@ -34,56 +44,24 @@ def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str
 
 class RAGEngine:
     def __init__(self):
-        # Base (static) knowledge
         self.base_docs: List[Dict] = KNOWLEDGE_CHUNKS
-        self.base_embeddings: List[np.ndarray] = self._embed_texts(
+        self.base_embeddings: List[np.ndarray] = _embed(
             [d["text"] for d in self.base_docs]
         )
 
-        # Dynamic report-specific chunks
-        # Each doc: {id, title, text, report_id}
         self.report_docs: List[Dict] = []
         self.report_embeddings: List[np.ndarray] = []
-
-    def _embed_texts(self, texts: List[str]) -> List[np.ndarray]:
-        """Embed a list of texts, return normalized vectors."""
-        if not texts:
-            return []
-
-        response = client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=texts,
-        )
-        vectors = [
-            _normalize(np.array(item.embedding, dtype="float32"))
-            for item in response.data
-        ]
-        return vectors
-
-    def _embed_query(self, query: str) -> np.ndarray:
-        response = client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=[query],
-        )
-        v = np.array(response.data[0].embedding, dtype="float32")
-        return _normalize(v)
 
     # ---------- REPORT INGESTION ----------
 
     def ingest_report(self, filename: str, text: str) -> str:
-        """
-        Ingest a report's full text:
-        - chunk
-        - embed each chunk
-        - store with a new report_id
-        """
         report_id = str(uuid.uuid4())
         chunks = chunk_text(text)
 
         if not chunks:
             return report_id
 
-        vectors = self._embed_texts(chunks)
+        vectors = _embed(chunks)
 
         for chunk, vec in zip(chunks, vectors):
             doc = {
@@ -119,28 +97,28 @@ class RAGEngine:
         scored.sort(key=lambda d: d["score"], reverse=True)
         return scored[:top_k]
 
+    # ---------- ANSWER ----------
+
     def answer(
         self,
         question: str,
         history: List[Dict] | None = None,
         report_id: Optional[str] = None,
     ) -> Tuple[str, List[str]]:
-        q_vec = self._embed_query(question)
+        query_vec = _normalize(np.array(_embed([question])[0]))
 
-        # If a report is specified, prioritize its chunks
         report_results: List[Dict] = []
         if report_id:
             report_results = self._retrieve_from_pool(
-                q_vec,
+                query_vec,
                 self.report_docs,
                 self.report_embeddings,
                 top_k=4,
                 filter_report_id=report_id,
             )
 
-        # Always also bring some generic knowledge
         base_results = self._retrieve_from_pool(
-            q_vec,
+            query_vec,
             self.base_docs,
             self.base_embeddings,
             top_k=2,
@@ -159,7 +137,6 @@ class RAGEngine:
 
         sources: List[str] = []
         for r in merged:
-            # Friendly source string
             if "filename" in r:
                 sources.append(f"{r.get('filename')} (report_id={r.get('report_id')})")
             else:
@@ -203,3 +180,90 @@ class RAGEngine:
 
         answer = chat.choices[0].message.content
         return answer, sources
+
+    # ---------- REPORT ANALYSIS ----------
+
+    def analyze_report(self, report_id: str) -> dict:
+        chunks = [d for d in self.report_docs if d.get("report_id") == report_id]
+        if not chunks:
+            return {
+                "executive_summary": "No report content found for this report ID.",
+                "building_overview": "",
+                "top_priorities": [],
+                "components_near_eol": [],
+                "funding_notes": "",
+                "escalation_items": [],
+            }
+
+        text_blocks = []
+        total = 0
+        for c in chunks:
+            text_blocks.append(c["text"])
+            total += len(c["text"])
+            if total > 12000:
+                break
+        report_text = "\n\n".join(text_blocks)
+
+        system_prompt = (
+            "You are a senior building science and strata engineering advisor at Strata Engineering, "
+            "a professional engineering firm in British Columbia. "
+            "You analyze depreciation reports and condition assessments for strata corporations. "
+            "Your analysis is used by professional engineers and project managers."
+        )
+
+        user_prompt = (
+            "Analyze the following building report excerpt and return a structured JSON object "
+            "with exactly these fields:\n\n"
+            "{\n"
+            '  "executive_summary": "2-3 sentence plain-language summary of the building condition",\n'
+            '  "building_overview": "key building facts extracted: age, type, location, major systems if mentioned",\n'
+            '  "top_priorities": [\n'
+            '    {\n'
+            '      "rank": 1,\n'
+            '      "component": "component name",\n'
+            '      "condition": "Good/Fair/Poor/Critical",\n'
+            '      "urgency": "Immediate/Short-Term/Medium-Term/Long-Term",\n'
+            '      "estimated_cost_range": "$X,XXX - $X,XXX or Not specified",\n'
+            '      "recommended_action": "concise action"\n'
+            '    }\n'
+            '  ],\n'
+            '  "components_near_eol": [\n'
+            '    {\n'
+            '      "component": "name",\n'
+            '      "estimated_remaining_life": "X years or At end of life",\n'
+            '      "notes": "brief note"\n'
+            '    }\n'
+            '  ],\n'
+            '  "funding_notes": "observations about reserve fund adequacy or funding concerns",\n'
+            '  "escalation_items": ["item requiring engineer sign-off", ...]\n'
+            "}\n\n"
+            "Rules:\n"
+            "- Include up to 5 top priorities, ranked by urgency and cost impact.\n"
+            "- Include all components with less than 5 years of estimated remaining life.\n"
+            "- If information is not in the report, use 'Not specified' rather than guessing.\n"
+            "- Flag any item requiring formal structural or legal sign-off as an escalation item.\n"
+            "- Return ONLY valid JSON, no extra text.\n\n"
+            f"Report content:\n{report_text}"
+        )
+
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        raw = response.choices[0].message.content
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {
+                "executive_summary": "Analysis could not be parsed. Raw output: " + raw[:500],
+                "building_overview": "",
+                "top_priorities": [],
+                "components_near_eol": [],
+                "funding_notes": "",
+                "escalation_items": [],
+            }

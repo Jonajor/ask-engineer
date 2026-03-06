@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 numpy
-openai>=1.6.0
+groq
+sentence-transformers
 python-multipart
 pypdf
