@@ -25,94 +25,52 @@ st.markdown("""
 #MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
-/* ── Page background ── */
-.stApp { background-color: #f5f7fa; }
+/* ── Page: white background, navy text ── */
+.stApp { background-color: #ffffff; }
+.stApp, .main, .main * {
+    color: #1a3a5c;
+}
 
-/* ── Sidebar ── */
+/* ── Sidebar: navy background, white text ── */
 [data-testid="stSidebar"] {
-    background-color: #1a3a5c;
-    border-right: none;
+    background-color: #1a3a5c !important;
 }
-[data-testid="stSidebar"] * {
-    color: #e8f0f8 !important;
-}
-[data-testid="stSidebar"] .stMarkdown h2 {
+[data-testid="stSidebar"], [data-testid="stSidebar"] * {
     color: #ffffff !important;
-    font-size: 1.2rem;
-    letter-spacing: 0.02em;
-}
-[data-testid="stSidebar"] .stCaption p {
-    color: #94b8d4 !important;
 }
 [data-testid="stSidebar"] hr {
     border-color: #2d5480 !important;
 }
 [data-testid="stSidebar"] .stButton > button {
-    background-color: #2d6a9f;
+    background-color: #2d6a9f !important;
     color: #ffffff !important;
     border: none;
     border-radius: 6px;
-    font-weight: 500;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background-color: #4a7fa5;
+    background-color: #4a7fa5 !important;
 }
 [data-testid="stSidebar"] .stDownloadButton > button {
-    background-color: #1e5c3a;
+    background-color: #1e5c3a !important;
     color: #ffffff !important;
     border: none;
     border-radius: 6px;
-    font-weight: 500;
-}
-[data-testid="stSidebar"] .stDownloadButton > button:hover {
-    background-color: #2a7a50;
 }
 
-/* ── Main content area ── */
-.main .block-container {
-    padding-top: 1.5rem;
-    padding-bottom: 2rem;
-    max-width: 900px;
-}
-
-/* Force dark text in main area to prevent sidebar color bleed */
-.main p, .main span, .main li, .main label,
-[data-testid="stChatMessage"] p,
-[data-testid="stChatMessage"] span,
-[data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] span,
-[data-testid="stMarkdownContainer"] li,
-.stTabs [data-baseweb="tab-panel"] p,
-.stTabs [data-baseweb="tab-panel"] span,
-.stTabs [data-baseweb="tab-panel"] li {
-    color: #1a1a1a !important;
-}
-
-/* ── Header ── */
+/* ── Header: blue gradient, white text ── */
 .se-header {
     background: linear-gradient(135deg, #1a3a5c 0%, #2d6a9f 100%);
     border-radius: 10px;
     padding: 20px 28px;
     margin-bottom: 20px;
-    color: white;
 }
-.se-header h1 {
-    margin: 0 0 4px 0;
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: #ffffff;
-}
-.se-header p {
-    margin: 0;
-    font-size: 0.88rem;
-    color: #b8d4ea;
-}
+.se-header h1 { margin: 0 0 4px 0; font-size: 1.5rem; font-weight: 700; color: #ffffff !important; }
+.se-header p  { margin: 0; font-size: 0.88rem; color: #b8d4ea !important; }
 
-/* ── Tabs ── */
+/* ── Tabs: inactive = white bg + blue text, active = navy bg + white text ── */
 .stTabs [data-baseweb="tab-list"] {
-    background-color: #ffffff;
+    background-color: #f0f6fc;
     border-radius: 8px 8px 0 0;
-    padding: 4px 4px 0 4px;
     gap: 4px;
     border-bottom: 2px solid #d0e4f0;
 }
@@ -120,8 +78,8 @@ st.markdown("""
     border-radius: 6px 6px 0 0;
     padding: 8px 20px;
     font-weight: 500;
-    color: #4a7fa5;
-    background-color: transparent;
+    background-color: #ffffff;
+    color: #1a3a5c !important;
 }
 .stTabs [aria-selected="true"] {
     background-color: #1a3a5c !important;
@@ -134,41 +92,24 @@ st.markdown("""
     border: 1px solid #d0e4f0;
     border-top: none;
 }
+.stTabs [data-baseweb="tab-panel"] * { color: #1a3a5c; }
 
 /* ── Chat messages ── */
 [data-testid="stChatMessage"] {
     border-radius: 10px;
     margin-bottom: 8px;
-    padding: 4px 8px;
+    background-color: #f5f9ff;
 }
-[data-testid="stChatMessage"][data-testid*="user"] {
-    background-color: #eef4fb;
-}
+[data-testid="stChatMessage"] * { color: #1a3a5c !important; }
 
-/* ── Info / warning banners ── */
-.stAlert {
-    border-radius: 8px;
-    border-left-width: 4px;
-}
-[data-testid="stAlert"] p {
-    color: #1a1a1a !important;
-    font-weight: 500;
-}
-div[data-testid="stAlert"][kind="warning"],
-div[role="alert"] {
-    background-color: #fff8e1 !important;
-    border-left-color: #f59e0b !important;
-}
-div[data-testid="stAlert"][kind="info"] {
-    background-color: #e8f4fd !important;
-    border-left-color: #2d6a9f !important;
-}
+/* ── Alerts ── */
+.stAlert { border-radius: 8px; border-left-width: 4px; }
+[data-testid="stAlert"] * { color: #1a3a5c !important; }
 
 /* ── Expanders ── */
 .streamlit-expanderHeader {
     background-color: #f0f6fc !important;
     border-radius: 6px !important;
-    font-size: 0.88rem !important;
     color: #1a3a5c !important;
 }
 </style>
