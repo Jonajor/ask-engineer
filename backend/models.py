@@ -14,6 +14,14 @@ class QueryResponse(BaseModel):
 class UploadResponse(BaseModel):
     report_id: str
     filename: str
+    already_existed: bool = False
+
+class ReportInfo(BaseModel):
+    report_id: str
+    filename: str
+    company_id: Optional[str]
+    uploaded_by: Optional[str]
+    created_at: str
 
 class PriorityItem(BaseModel):
     rank: int

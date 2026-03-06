@@ -67,6 +67,10 @@ class RAGEngine:
         vectors = _embed(chunks)
         with get_db() as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO reports (report_id, filename, company_id, uploaded_by) VALUES (%s, %s, %s, %s)",
+                    (report_id, filename, company_id, uploaded_by),
+                )
                 for chunk, vec in zip(chunks, vectors):
                     cur.execute(
                         "INSERT INTO report_chunks (id, report_id, filename, text, embedding, company_id, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -74,6 +78,17 @@ class RAGEngine:
                     )
             conn.commit()
         return report_id
+
+    def find_existing_report(self, filename: str, company_id: Optional[str], uploaded_by: Optional[str]) -> Optional[str]:
+        """Returns existing report_id if same filename already ingested by this user."""
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT report_id FROM reports WHERE filename = %s AND uploaded_by = %s LIMIT 1",
+                    (filename, uploaded_by),
+                )
+                row = cur.fetchone()
+        return row[0] if row else None
 
     # ---------- RETRIEVAL ----------
 

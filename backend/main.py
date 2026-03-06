@@ -15,7 +15,7 @@ from db import get_db, init_db
 from models import (
     QueryRequest, QueryResponse, UploadResponse, ReportAnalysis, ReportImprovements,
     LoginRequest, LoginResponse, CreateCompanyRequest, CreateUserRequest,
-    CompanyInfo, UserInfo,
+    CompanyInfo, UserInfo, ReportInfo,
 )
 from rag import RAGEngine
 
@@ -261,6 +261,16 @@ async def upload_report(file: UploadFile = File(...), user=Depends(get_current_u
         raise HTTPException(status_code=400, detail="PDF appears to be empty or unreadable")
     if rag_engine is None:
         raise HTTPException(status_code=503, detail="Engine is still initializing.")
+
+    # Check for duplicate
+    existing_id = rag_engine.find_existing_report(
+        filename=file.filename,
+        company_id=user.get("company_id"),
+        uploaded_by=user.get("user_id"),
+    )
+    if existing_id:
+        return UploadResponse(report_id=existing_id, filename=file.filename, already_existed=True)
+
     try:
         report_id = rag_engine.ingest_report(
             filename=file.filename,
@@ -271,7 +281,30 @@ async def upload_report(file: UploadFile = File(...), user=Depends(get_current_u
     except Exception as e:
         import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error ingesting report: {e}")
-    return UploadResponse(report_id=report_id, filename=file.filename)
+    return UploadResponse(report_id=report_id, filename=file.filename, already_existed=False)
+
+
+@app.get("/reports", response_model=list[ReportInfo])
+def list_reports(user=Depends(get_current_user)):
+    role = user.get("role")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if role == "superadmin":
+                cur.execute("SELECT report_id, filename, company_id, uploaded_by, created_at FROM reports ORDER BY created_at DESC")
+            elif role == "admin":
+                cur.execute("SELECT report_id, filename, company_id, uploaded_by, created_at FROM reports WHERE company_id = %s ORDER BY created_at DESC", (user["company_id"],))
+            else:
+                cur.execute("SELECT report_id, filename, company_id, uploaded_by, created_at FROM reports WHERE uploaded_by = %s ORDER BY created_at DESC", (user["user_id"],))
+            rows = cur.fetchall()
+    return [
+        ReportInfo(
+            report_id=r[0], filename=r[1],
+            company_id=str(r[2]) if r[2] else None,
+            uploaded_by=str(r[3]) if r[3] else None,
+            created_at=r[4].isoformat(),
+        )
+        for r in rows
+    ]
 
 
 @app.post("/analyze-report/{report_id}", response_model=ReportAnalysis)

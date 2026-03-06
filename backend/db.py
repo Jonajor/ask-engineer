@@ -38,6 +38,16 @@ def init_db():
                 )
             """)
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    report_id TEXT PRIMARY KEY,
+                    filename TEXT NOT NULL,
+                    company_id UUID,
+                    uploaded_by UUID,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+
             cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS report_chunks (
                     id TEXT PRIMARY KEY,

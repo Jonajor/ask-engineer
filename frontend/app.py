@@ -235,7 +235,30 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### Report Context")
-    st.caption("Upload a PDF to ask questions about a specific report.")
+
+    # ── Existing reports ──────────────────────────────────────────
+    try:
+        r = requests.get(f"{BACKEND_BASE_URL}/reports", headers=auth_headers(), timeout=10)
+        existing_reports = r.json() if r.ok else []
+    except Exception:
+        existing_reports = []
+
+    if existing_reports:
+        report_options = {rep["filename"]: rep["report_id"] for rep in existing_reports}
+        search = st.text_input("Search reports", placeholder="Type to filter...", label_visibility="collapsed")
+        filtered = {k: v for k, v in report_options.items() if search.lower() in k.lower()} if search else report_options
+        if filtered:
+            selected_name = st.selectbox("Existing reports", list(filtered.keys()), label_visibility="collapsed")
+            if st.button("Use This Report", use_container_width=True):
+                st.session_state.current_report_id = filtered[selected_name]
+                st.session_state.current_report_name = selected_name
+                st.session_state.analysis_result = None
+                st.session_state.improvement_result = None
+                st.rerun()
+        elif search:
+            st.caption("No reports match your search.")
+
+    st.markdown("##### Upload New Report")
     uploaded = st.file_uploader("Select PDF", type=["pdf"], label_visibility="collapsed")
 
     if uploaded is not None and st.button("Ingest Report", type="primary", use_container_width=True):
@@ -248,7 +271,11 @@ with st.sidebar:
                 st.session_state.current_report_id = data["report_id"]
                 st.session_state.current_report_name = data["filename"]
                 st.session_state.analysis_result = None
-                st.success(f"Ingested: {data['filename']}")
+                st.session_state.improvement_result = None
+                if data.get("already_existed"):
+                    st.warning(f"Already ingested: {data['filename']} — using existing version.")
+                else:
+                    st.success(f"Ingested: {data['filename']}")
             except Exception as e:
                 st.error(f"Error: {e}")
 
