@@ -3,6 +3,6 @@ uvicorn[standard]
 pydantic
 numpy
 groq
-sentence-transformers
+fastembed
 python-multipart
 pypdf

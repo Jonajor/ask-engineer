@@ -3,22 +3,22 @@ import uuid
 from typing import List, Dict, Tuple, Optional
 
 import numpy as np
+from fastembed import TextEmbedding
 from groq import Groq
-from sentence_transformers import SentenceTransformer
 
 from knowledge_base import KNOWLEDGE_CHUNKS
 
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 CHAT_MODEL = "llama-3.3-70b-versatile"
 
-_embedder: SentenceTransformer | None = None
+_embedder: TextEmbedding | None = None
 client = Groq()
 
 
-def _get_embedder() -> SentenceTransformer:
+def _get_embedder() -> TextEmbedding:
     global _embedder
     if _embedder is None:
-        _embedder = SentenceTransformer(EMBEDDING_MODEL)
+        _embedder = TextEmbedding(EMBEDDING_MODEL)
     return _embedder
 
 
@@ -29,8 +29,8 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 def _embed(texts: List[str]) -> List[np.ndarray]:
     if not texts:
         return []
-    vectors = _get_embedder().encode(texts, normalize_embeddings=True, show_progress_bar=False)
-    return [v.astype("float32") for v in vectors]
+    vectors = list(_get_embedder().embed(texts))
+    return [_normalize(np.array(v, dtype="float32")) for v in vectors]
 
 
 def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str]:
