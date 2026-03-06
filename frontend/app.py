@@ -1,6 +1,7 @@
 import requests
 import streamlit as st
 import os
+from pdf_export import generate_pdf
 
 try:
     _secret_url = st.secrets.get("BACKEND_BASE_URL", "http://localhost:8000")
@@ -62,6 +63,19 @@ with st.sidebar:
             st.session_state.analysis_result = None
             st.rerun()
 
+    st.markdown("---")
+    if st.session_state.messages:
+        pdf_bytes = generate_pdf(
+            st.session_state.messages,
+            report_name=st.session_state.current_report_name,
+        )
+        st.download_button(
+            label="Export Q&A to PDF",
+            data=pdf_bytes,
+            file_name="strata-engineering-session.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
     st.markdown("---")
     st.caption("This tool does not replace formal engineering review.")
 
