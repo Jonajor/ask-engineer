@@ -1,3 +1,4 @@
+import asyncio
 import os
 import io
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -25,14 +26,16 @@ rag_engine: RAGEngine | None = None
 
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     global rag_engine
-    rag_engine = RAGEngine()
+    loop = asyncio.get_event_loop()
+    rag_engine = await loop.run_in_executor(None, RAGEngine)
 
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
-    assert rag_engine is not None, "Engine not initialized"
+    if rag_engine is None:
+        raise HTTPException(status_code=503, detail="Engine is still initializing, please retry in a moment.")
     answer, sources = rag_engine.answer(
         question=req.question,
         history=req.history,
@@ -71,7 +74,8 @@ async def upload_report(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="PDF appears to be empty or unreadable")
 
     # 3) Ingest into in-memory RAG engine (no DB)
-    assert rag_engine is not None, "Engine not initialized"
+    if rag_engine is None:
+        raise HTTPException(status_code=503, detail="Engine is still initializing, please retry in a moment.")
     try:
         report_id = rag_engine.ingest_report(filename=file.filename, text=full_text)
     except Exception as e:
@@ -88,7 +92,8 @@ def analyze_report(report_id: str):
     Run structured analysis on an already-ingested report.
     Returns priorities, EOL components, funding notes, and escalation items.
     """
-    assert rag_engine is not None, "Engine not initialized"
+    if rag_engine is None:
+        raise HTTPException(status_code=503, detail="Engine is still initializing, please retry in a moment.")
     result = rag_engine.analyze_report(report_id)
     return ReportAnalysis(**result)
 
