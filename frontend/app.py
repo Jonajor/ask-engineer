@@ -96,6 +96,10 @@ with tab_chat:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("sources"):
+                with st.expander("Sources"):
+                    for s in msg["sources"]:
+                        st.markdown(f"- {s}")
 
 # --- TAB 2: Analyze Report ---
 with tab_analyze:
@@ -194,10 +198,5 @@ if user_input:
         answer = f"Error contacting backend: {e}"
         sources = []
 
-    msg_content = answer
-    if sources:
-        sources_md = "\n".join(f"- {s}" for s in sources)
-        msg_content += f"\n\n<details><summary>Sources</summary>\n\n{sources_md}\n\n</details>"
-
-    st.session_state.messages.append({"role": "assistant", "content": msg_content})
+    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
     st.rerun()
