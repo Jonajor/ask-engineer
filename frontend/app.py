@@ -19,6 +19,148 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+/* ── Hide Streamlit chrome ── */
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
+
+/* ── Page background ── */
+.stApp { background-color: #f5f7fa; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background-color: #1a3a5c;
+    border-right: none;
+}
+[data-testid="stSidebar"] * {
+    color: #e8f0f8 !important;
+}
+[data-testid="stSidebar"] .stMarkdown h2 {
+    color: #ffffff !important;
+    font-size: 1.2rem;
+    letter-spacing: 0.02em;
+}
+[data-testid="stSidebar"] .stCaption p {
+    color: #94b8d4 !important;
+}
+[data-testid="stSidebar"] hr {
+    border-color: #2d5480 !important;
+}
+[data-testid="stSidebar"] .stButton > button {
+    background-color: #2d6a9f;
+    color: #ffffff !important;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background-color: #4a7fa5;
+}
+[data-testid="stSidebar"] .stDownloadButton > button {
+    background-color: #1e5c3a;
+    color: #ffffff !important;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+}
+[data-testid="stSidebar"] .stDownloadButton > button:hover {
+    background-color: #2a7a50;
+}
+
+/* ── Main content area ── */
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+    max-width: 900px;
+}
+
+/* ── Header ── */
+.se-header {
+    background: linear-gradient(135deg, #1a3a5c 0%, #2d6a9f 100%);
+    border-radius: 10px;
+    padding: 20px 28px;
+    margin-bottom: 20px;
+    color: white;
+}
+.se-header h1 {
+    margin: 0 0 4px 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+.se-header p {
+    margin: 0;
+    font-size: 0.88rem;
+    color: #b8d4ea;
+}
+
+/* ── Tabs ── */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: #ffffff;
+    border-radius: 8px 8px 0 0;
+    padding: 4px 4px 0 4px;
+    gap: 4px;
+    border-bottom: 2px solid #d0e4f0;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 6px 6px 0 0;
+    padding: 8px 20px;
+    font-weight: 500;
+    color: #4a7fa5;
+    background-color: transparent;
+}
+.stTabs [aria-selected="true"] {
+    background-color: #1a3a5c !important;
+    color: #ffffff !important;
+}
+.stTabs [data-baseweb="tab-panel"] {
+    background-color: #ffffff;
+    border-radius: 0 0 10px 10px;
+    padding: 20px;
+    border: 1px solid #d0e4f0;
+    border-top: none;
+}
+
+/* ── Chat messages ── */
+[data-testid="stChatMessage"] {
+    border-radius: 10px;
+    margin-bottom: 8px;
+    padding: 4px 8px;
+}
+[data-testid="stChatMessage"][data-testid*="user"] {
+    background-color: #eef4fb;
+}
+
+/* ── Info / warning banners ── */
+.stAlert {
+    border-radius: 8px;
+    border-left-width: 4px;
+}
+[data-testid="stAlert"] p {
+    color: #1a1a1a !important;
+    font-weight: 500;
+}
+div[data-testid="stAlert"][kind="warning"],
+div[role="alert"] {
+    background-color: #fff8e1 !important;
+    border-left-color: #f59e0b !important;
+}
+div[data-testid="stAlert"][kind="info"] {
+    background-color: #e8f4fd !important;
+    border-left-color: #2d6a9f !important;
+}
+
+/* ── Expanders ── */
+.streamlit-expanderHeader {
+    background-color: #f0f6fc !important;
+    border-radius: 6px !important;
+    font-size: 0.88rem !important;
+    color: #1a3a5c !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- Session state ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -82,12 +224,13 @@ with st.sidebar:
 # ================================================================
 # HEADER
 # ================================================================
-st.markdown(
-    "<h3 style='margin-bottom:0; color:#1a3a5c;'>Strata Engineering Knowledge Assistant</h3>"
-    "<p style='color:#4a7fa5; margin-top:4px;'>Ask technical questions about building science, "
-    "depreciation reports, warranties, and more.</p>",
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<div class="se-header">
+    <h1>Strata Engineering &mdash; Knowledge Assistant</h1>
+    <p>Ask technical questions about building science, depreciation reports, warranties, and more.
+    Upload a PDF report in the sidebar for report-specific analysis.</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ================================================================
 # TABS
