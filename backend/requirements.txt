@@ -6,3 +6,7 @@ groq
 fastembed
 python-multipart
 pypdf
+psycopg2-binary
+pgvector
+PyJWT
+bcrypt

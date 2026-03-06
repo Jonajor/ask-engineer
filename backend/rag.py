@@ -6,6 +6,7 @@ import numpy as np
 from fastembed import TextEmbedding
 from groq import Groq
 
+from db import get_db, init_db
 from knowledge_base import KNOWLEDGE_CHUNKS
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -34,15 +35,13 @@ def _embed(texts: List[str]) -> List[np.ndarray]:
 
 
 def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str]:
-    """Simple character-based chunking with overlap."""
     text = text.replace("\r\n", "\n")
     chunks = []
     start = 0
     length = len(text)
     while start < length:
         end = min(start + max_chars, length)
-        chunk = text[start:end]
-        chunks.append(chunk.strip())
+        chunks.append(text[start:end].strip())
         if end == length:
             break
         start = end - overlap
@@ -55,32 +54,25 @@ class RAGEngine:
         self.base_embeddings: List[np.ndarray] = _embed(
             [d["text"] for d in self.base_docs]
         )
-
-        self.report_docs: List[Dict] = []
-        self.report_embeddings: List[np.ndarray] = []
+        init_db()
 
     # ---------- REPORT INGESTION ----------
 
-    def ingest_report(self, filename: str, text: str) -> str:
+    def ingest_report(self, filename: str, text: str, company_id: Optional[str] = None, uploaded_by: Optional[str] = None) -> str:
         report_id = str(uuid.uuid4())
         chunks = chunk_text(text)
-
         if not chunks:
             return report_id
 
         vectors = _embed(chunks)
-
-        for chunk, vec in zip(chunks, vectors):
-            doc = {
-                "id": str(uuid.uuid4()),
-                "title": f"Report: {filename}",
-                "text": chunk,
-                "report_id": report_id,
-                "filename": filename,
-            }
-            self.report_docs.append(doc)
-            self.report_embeddings.append(vec)
-
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                for chunk, vec in zip(chunks, vectors):
+                    cur.execute(
+                        "INSERT INTO report_chunks (id, report_id, filename, text, embedding, company_id, uploaded_by) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (str(uuid.uuid4()), report_id, filename, chunk, vec, company_id, uploaded_by),
+                    )
+            conn.commit()
         return report_id
 
     # ---------- RETRIEVAL ----------
@@ -91,18 +83,42 @@ class RAGEngine:
         docs: List[Dict],
         embeddings: List[np.ndarray],
         top_k: int = 3,
-        filter_report_id: Optional[str] = None,
     ) -> List[Dict]:
-        scored: List[Dict] = []
-
+        scored = []
         for doc, vec in zip(docs, embeddings):
-            if filter_report_id and doc.get("report_id") != filter_report_id:
-                continue
             score = float(vec @ query_vec)
             scored.append({**doc, "score": score})
-
         scored.sort(key=lambda d: d["score"], reverse=True)
         return scored[:top_k]
+
+    def _report_access_filter(self, report_id: str, viewer: Optional[Dict]) -> Tuple[str, tuple]:
+        """Returns (WHERE clause, params) scoped by viewer role."""
+        if not viewer or viewer.get("role") == "superadmin":
+            return "WHERE report_id = %s", (report_id,)
+        elif viewer.get("role") == "admin":
+            return "WHERE report_id = %s AND company_id = %s", (report_id, viewer["company_id"])
+        else:
+            return "WHERE report_id = %s AND uploaded_by = %s", (report_id, viewer["user_id"])
+
+    def _retrieve_report_chunks(
+        self, query_vec: np.ndarray, report_id: str, top_k: int = 4, viewer: Optional[Dict] = None
+    ) -> List[Dict]:
+        where, params = self._report_access_filter(report_id, viewer)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT id, report_id, filename, text,
+                           1 - (embedding <=> %s) AS score
+                    FROM report_chunks
+                    {where}
+                    ORDER BY embedding <=> %s
+                    LIMIT %s
+                """, (query_vec, *params, query_vec, top_k))
+                rows = cur.fetchall()
+        return [
+            {"id": r[0], "report_id": r[1], "filename": r[2], "text": r[3], "score": r[4]}
+            for r in rows
+        ]
 
     # ---------- ANSWER ----------
 
@@ -111,18 +127,13 @@ class RAGEngine:
         question: str,
         history: List[Dict] | None = None,
         report_id: Optional[str] = None,
+        viewer: Optional[Dict] = None,
     ) -> Tuple[str, List[str]]:
         query_vec = _normalize(np.array(_embed([question])[0]))
 
         report_results: List[Dict] = []
         if report_id:
-            report_results = self._retrieve_from_pool(
-                query_vec,
-                self.report_docs,
-                self.report_embeddings,
-                top_k=4,
-                filter_report_id=report_id,
-            )
+            report_results = self._retrieve_report_chunks(query_vec, report_id, top_k=4, viewer=viewer)
 
         base_results = self._retrieve_from_pool(
             query_vec,
@@ -188,10 +199,28 @@ class RAGEngine:
         answer = chat.choices[0].message.content
         return answer, sources
 
+    def _get_report_text(self, report_id: str, max_chars: int = 20000, viewer: Optional[Dict] = None) -> Tuple[List[Dict], str]:
+        where, params = self._report_access_filter(report_id, viewer)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT id, report_id, filename, text FROM report_chunks {where}",
+                    params,
+                )
+                rows = cur.fetchall()
+        chunks = [{"id": r[0], "report_id": r[1], "filename": r[2], "text": r[3]} for r in rows]
+        text_blocks, total = [], 0
+        for c in chunks:
+            text_blocks.append(c["text"])
+            total += len(c["text"])
+            if total > max_chars:
+                break
+        return chunks, "\n\n".join(text_blocks)
+
     # ---------- REPORT ANALYSIS ----------
 
-    def analyze_report(self, report_id: str) -> dict:
-        chunks = [d for d in self.report_docs if d.get("report_id") == report_id]
+    def analyze_report(self, report_id: str, viewer: Optional[Dict] = None) -> dict:
+        chunks, report_text = self._get_report_text(report_id, viewer=viewer)
         if not chunks:
             return {
                 "executive_summary": "No report content found for this report ID.",
@@ -201,15 +230,6 @@ class RAGEngine:
                 "funding_notes": "",
                 "escalation_items": [],
             }
-
-        text_blocks = []
-        total = 0
-        for c in chunks:
-            text_blocks.append(c["text"])
-            total += len(c["text"])
-            if total > 20000:
-                break
-        report_text = "\n\n".join(text_blocks)
 
         system_prompt = (
             "You are a senior building science and strata engineering advisor at Strata Engineering, "
@@ -281,8 +301,8 @@ class RAGEngine:
 
     # ---------- REPORT IMPROVEMENT TIPS ----------
 
-    def improve_report(self, report_id: str) -> dict:
-        chunks = [d for d in self.report_docs if d.get("report_id") == report_id]
+    def improve_report(self, report_id: str, viewer: Optional[Dict] = None) -> dict:
+        chunks, report_text = self._get_report_text(report_id, viewer=viewer)
         if not chunks:
             return {
                 "overall_score": "N/A",
@@ -291,15 +311,6 @@ class RAGEngine:
                 "missing_sections": [],
                 "strengths": [],
             }
-
-        text_blocks = []
-        total = 0
-        for c in chunks:
-            text_blocks.append(c["text"])
-            total += len(c["text"])
-            if total > 20000:
-                break
-        report_text = "\n\n".join(text_blocks)
 
         system_prompt = (
             "You are a senior peer reviewer and quality assurance expert at Strata Engineering, "
