@@ -11,8 +11,15 @@ from knowledge_base import KNOWLEDGE_CHUNKS
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 CHAT_MODEL = "llama-3.3-70b-versatile"
 
-_embedder = SentenceTransformer(EMBEDDING_MODEL)
+_embedder: SentenceTransformer | None = None
 client = Groq()
+
+
+def _get_embedder() -> SentenceTransformer:
+    global _embedder
+    if _embedder is None:
+        _embedder = SentenceTransformer(EMBEDDING_MODEL)
+    return _embedder
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
@@ -22,7 +29,7 @@ def _normalize(v: np.ndarray) -> np.ndarray:
 def _embed(texts: List[str]) -> List[np.ndarray]:
     if not texts:
         return []
-    vectors = _embedder.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    vectors = _get_embedder().encode(texts, normalize_embeddings=True, show_progress_bar=False)
     return [v.astype("float32") for v in vectors]
 
 
